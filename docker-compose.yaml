@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # This is the name of your service
+  esphome-server:
+    # Tell Docker Compose to build the image from the Dockerfile
+    # in the current directory ('.')
+    build: .
+    # (Optional) Give the built image a friendly name
+    image: esp-build-server
+    
+    ports:
+      # Map port 5001 on your host machine to port 5001 in the container
+      - "5001:5001"
+      
+    volumes:
+      # This is the recommended way to handle persistent data.
+      # It maps a folder named 'esphome_jobs_data' (which Docker creates)
+      # to the '/data/esphome_jobs' directory inside the container.
+      # This one volume will hold all your projects, logs, binaries, and caches.
+      - esphome_jobs_data:/data/esphome_jobs
+      
+      # --- ALTERNATIVE: Bind Mount (if you want data in a local folder) ---
+      # Uncomment the line below and comment out the lines above if
+      # you prefer to have the data in a folder named './data'
+      # in the same directory as this docker-compose.yml file.
+      # - ./data:/data/esphome_jobs
+      
+    restart: unless-stopped
+
+# This top-level key tells Docker to create and manage
+# the named volume 'esphome_jobs_data'.
+volumes:
+  esphome_jobs_data:

@@ -1,0 +1,4 @@
+flask
+platformio
+esphome
+idf-component-manager
