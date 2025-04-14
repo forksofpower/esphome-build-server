@@ -16,6 +16,10 @@ def create_app():
     log_level_numeric = getattr(logging, config.LOG_LEVEL, logging.INFO)
     logging.basicConfig(level=log_level_numeric, format='%(asctime)s - %(levelname)s - %(message)s')
     
+    # Initialize Celery with Flask app context
+    from .celery_app import celery
+    celery.conf.update(app.config)
+    
     # Register the main blueprint that contains all routes
     from .routes import main_bp
     app.register_blueprint(main_bp)
