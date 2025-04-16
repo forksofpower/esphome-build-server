@@ -32,13 +32,20 @@ class AppConfig:
         secrets_str = parser.get('jobs', 'secret_filenames', fallback='secrets.yaml, secrets.yml')
         self.SECRET_FILENAMES = [s.strip() for s in secrets_str.split(',') if s.strip()]
 
-        base_dir_config = parser.get('paths', 'base_dir', fallback='esphome_jobs')
-        # Use script's PARENT dir (root) as base for relative paths
-        root_dir = os.path.join(self.SCRIPT_DIR, '..')
-        if os.path.isabs(base_dir_config):
-            self.JOBS_DIR = base_dir_config
+        # Check for environment variable override first
+        env_base_dir = os.environ.get('ESPHOME_SERVER_BASE_DIR')
+        if env_base_dir:
+            # Use environment variable (for Docker)
+            self.JOBS_DIR = os.path.join(env_base_dir, 'esphome_jobs')
         else:
-            self.JOBS_DIR = os.path.join(root_dir, base_dir_config)
+            # Use config file setting
+            base_dir_config = parser.get('paths', 'base_dir', fallback='esphome_jobs')
+            # Use script's PARENT dir (root) as base for relative paths
+            root_dir = os.path.join(self.SCRIPT_DIR, '..')
+            if os.path.isabs(base_dir_config):
+                self.JOBS_DIR = base_dir_config
+            else:
+                self.JOBS_DIR = os.path.join(root_dir, base_dir_config)
         
         self.LOGS_DIR = os.path.join(self.JOBS_DIR, parser.get('paths', 'logs_dir', fallback='logs'))
         self.PROJECTS_DIR = os.path.join(self.JOBS_DIR, parser.get('paths', 'projects_dir', fallback='projects'))
