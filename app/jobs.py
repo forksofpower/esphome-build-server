@@ -1,7 +1,6 @@
 """
 Core job management logic.
-- Worker thread entry point
-- Background worker manager
+- Celery task for ESPHome compilation
 - Log broadcasting
 - Directory setup
 """
@@ -12,14 +11,12 @@ import subprocess
 import datetime
 import shutil
 import queue
-import threading
 import uuid
-from flask import current_app as app # Import app context
 
 from .app_config import config
 from .jobs_state import (
     JOBS_DB, JOBS_DB_LOCK, JOB_LOG_BROADCASTER, 
-    JOB_LOG_BROADCASTER_LOCK, worker_semaphore
+    JOB_LOG_BROADCASTER_LOCK
 )
 from .services import LogParser, _find_firmware_bin
 
@@ -36,10 +33,8 @@ def setup_directories():
         if not os.path.exists(path):
             try:
                 os.makedirs(path)
-                # Use app.logger since this is still called from run.py's context
-                app.logger.info(f"Created directory: {path}")
+                logging.info(f"Created directory: {path}")
             except OSError as e:
-                # Use standard logging for fatal errors
                 logging.error(f"FATAL: Could not create directory {path}: {e}")
                 exit(1)
 
@@ -53,11 +48,15 @@ def _broadcast_log(job_id, payload):
                 except queue.Full:
                     pass 
 
-def _run_esphome_task(job_id, project_dir, yaml_filename, device_name, log_path, job_type, target_device, api_password):
+from .celery_app import celery
+
+@celery.task(name='app.jobs.run_esphome_task')
+def run_esphome_task(job_id, project_dir, yaml_filename, device_name, log_path, job_type, target_device, api_password):
     """
-    THE ACTUAL WORKER TASK (LOCAL). Runs in its own thread.
+    Celery task for running ESPHome compilation or upload.
     'project_dir' is the persistent project cache directory.
     """
+    
     start_time = datetime.datetime.now()
     with JOBS_DB_LOCK:
         JOBS_DB[job_id]["status"] = "running"
@@ -193,45 +192,5 @@ def _run_esphome_task(job_id, project_dir, yaml_filename, device_name, log_path,
         _broadcast_log(job_id, {'event': 'CLOSE'})
         with JOB_LOG_BROADCASTER_LOCK:
             if job_id in JOB_LOG_BROADCASTER: del JOB_LOG_BROADCASTER[job_id]
-        worker_semaphore.release()
-        # Use standard logging for background threads
-        logging.info(f"Job {job_id}: Worker slot released. {config.MAX_CONCURRENT_JOBS - worker_semaphore._value} active.")
-
-
-def worker_manager_thread():
-    """The main worker manager. Runs in a separate thread."""
-    from .jobs_state import job_queue # Import here to avoid circularity at load time
-    
-    while True:
-        try:
-            job_id = job_queue.get()
-            # Use standard logging for background threads
-            logging.info(f"Job {job_id}: Picked up from queue. Waiting for worker slot...")
-            worker_semaphore.acquire()
-            logging.info(f"Job {job_id}: Worker slot acquired. Starting job thread.")
-            
-            with JOBS_DB_LOCK:
-                job_details = JOBS_DB.get(job_id)
-            if not job_details:
-                # Use standard logging for background threads
-                logging.error(f"Job {job_id}: Was in queue but not in DB. Discarding.")
-                worker_semaphore.release()
-                continue
-            
-            project_dir = job_details["project_dir"]
-            yaml_filename = job_details["main_yaml"]
-            device_name = job_details["device_name"]
-            log_path = job_details["log_file"]
-            job_type = job_details.get("job_type", "compile") 
-            target_device = job_details.get("target_device")
-            api_password = job_details.get("api_password")
-
-            compile_thread = threading.Thread(
-                target=_run_esphome_task,
-                args=(job_id, project_dir, yaml_filename, device_name, log_path, job_type, target_device, api_password)
-            )
-            compile_thread.start()
-        except Exception as e:
-            # Use standard logging for background threads
-            logging.error(f"FATAL: Worker manager thread crashed: {e}")
+        logging.info(f"Job {job_id}: Task completed.")
 
