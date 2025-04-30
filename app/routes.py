@@ -17,10 +17,11 @@ from flask import (
 
 from .app_config import config
 from .jobs_state import (
-    JOBS_DB, JOBS_DB_LOCK, job_queue, 
-    JOB_LOG_BROADCASTER, JOB_LOG_BROADCASTER_LOCK, worker_semaphore
+    JOBS_DB, JOBS_DB_LOCK, 
+    JOB_LOG_BROADCASTER, JOB_LOG_BROADCASTER_LOCK
 )
 from .services import get_device_name_from_yaml, LogParser
+from .jobs import run_esphome_task
 
 # Create a Blueprint
 main_bp = Blueprint('main', __name__)
@@ -98,8 +99,12 @@ def handle_compile_request():
                 "error": None
             }
         
-        job_queue.put(job_id)
-        app.logger.info(f"Job {job_id}: Submitted to queue for project '{device_name}'. Queue size: {job_queue.qsize()}")
+        # Submit to Celery
+        run_esphome_task.delay(
+            job_id, project_dir, main_yaml_filename, device_name, 
+            log_path, "compile", None, None
+        )
+        app.logger.info(f"Job {job_id}: Submitted to Celery for project '{device_name}'.")
 
         return jsonify({
             "success": True,
@@ -121,7 +126,6 @@ def handle_compile_request():
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
 
-
 @main_bp.route('/jobs', methods=['GET'])
 def get_jobs_dashboard():
     """Renders an HTML dashboard of all jobs."""
@@ -136,7 +140,7 @@ def get_jobs_dashboard():
         if 'device_name' not in job_dict: job_dict['device_name'] = job_dict.get('main_yaml', 'unknown') # Fallback
         formatted_jobs.append(job_dict)
 
-    active_jobs = config.MAX_CONCURRENT_JOBS - worker_semaphore._value
+    active_jobs = len([j for j in jobs_list if j.get('status') == 'running'])
     
     return render_template_string(
         """
@@ -266,7 +270,11 @@ def handle_upload_page(original_job_id):
                 "error": None
             }
         
-        job_queue.put(new_job_id)
+        # Submit to Celery
+        run_esphome_task.delay(
+            new_job_id, job['project_dir'], job['main_yaml'], job['device_name'],
+            log_path, "upload", target_device, api_password
+        )
         app.logger.info(f"Job {new_job_id}: Submitted UPLOAD task for {original_job_id} -> {target_device}")
         return redirect(url_for('main.get_live_job_page', job_id=new_job_id))
 
