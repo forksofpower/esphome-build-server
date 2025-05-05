@@ -1,23 +1,16 @@
 """
-Global state for the job queue.
+Global state for job tracking.
 
 This file exists to break circular dependencies.
 Other modules can safely import these state objects.
 """
 
 import threading
-import queue
-from .app_config import config
+from .redis_db import RedisJobDB
 
-# In-memory "database" to track job status.
-JOBS_DB = {}
-JOBS_DB_LOCK = threading.Lock()
-
-# Queue to hold pending job IDs
-job_queue = queue.Queue()
-
-# Semaphore to limit concurrent workers
-worker_semaphore = threading.Semaphore(config.MAX_CONCURRENT_JOBS)
+# Redis-backed "database" to track job status (shared across processes)
+JOBS_DB = RedisJobDB()
+JOBS_DB_LOCK = threading.Lock()  # Keep for compatibility, but Redis handles locking
 
 # Pub/Sub for live log streaming
 JOB_LOG_BROADCASTER = {}
