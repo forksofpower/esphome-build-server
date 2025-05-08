@@ -9,10 +9,9 @@ and starts the background worker manager thread.
 
 import logging
 import shutil
-import threading
-from app import create_app  # Corrected import
+from app import create_app
 from app.app_config import config
-from app.jobs import setup_directories, worker_manager_thread
+from app.jobs import setup_directories
 
 # Create the Flask app instance
 app = create_app()
@@ -56,11 +55,7 @@ if __name__ == '__main__':
         app.logger.info(f"Persistent Project Directory: {config.PROJECTS_DIR}")
         app.logger.info(f"Isolated PlatformIO Cache: {config.PLATFORMIO_CACHE_DIR}")
 
-        # Start worker manager thread
-        worker_manager = threading.Thread(target=worker_manager_thread, daemon=True)
-        worker_manager.start()
-        app.logger.info("Started main job worker manager thread.")
-
+        app.logger.info("Celery workers will handle job processing.")
         app.logger.info(f"Starting Flask server on http://{config.HOST}:{config.PORT}")
     
     # --- END OF APP CONTEXT BLOCK ---
