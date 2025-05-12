@@ -1,32 +1,79 @@
-version: '3.8'
-
 services:
-  # This is the name of your service
-  esphome-server:
-    # Tell Docker Compose to build the image from the Dockerfile
-    # in the current directory ('.')
-    build: .
-    # (Optional) Give the built image a friendly name
-    image: esp-build-server
-    
+  # Redis for shared state between Flask and Celery workers
+  redis:
+    image: redis:7-alpine
     ports:
-      # Map port 5001 on your host machine to port 5001 in the container
-      - "5001:5001"
-      
-    volumes:
-      # This is the recommended way to handle persistent data.
-      # It maps a folder named 'esphome_jobs_data' (which Docker creates)
-      # to the '/data/esphome_jobs' directory inside the container.
-      # This one volume will hold all your projects, logs, binaries, and caches.
-      - esphome_jobs_data:/data/esphome_jobs
-      
-      # --- ALTERNATIVE: Bind Mount (if you want data in a local folder) ---
-      # Uncomment the line below and comment out the lines above if
-      # you prefer to have the data in a folder named './data'
-      # in the same directory as this docker-compose.yml file.
-      # - ./data:/data/esphome_jobs
-      
+      - "6379:6379"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # RabbitMQ message broker for Celery
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"    # AMQP protocol port
+      - "15672:15672"  # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Flask web server
+  esphome-server:
+    build: .
+    image: esp-build-server
+    ports:
+      - "5001:5001"
+    volumes:
+      - esphome_jobs_data:/data/esphome_jobs
+    environment:
+      CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: rpc://
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    develop:
+      watch:
+        - path: ./app
+          action: sync
+          target: /app
+
+  # Celery worker for processing compilation jobs
+  celery-worker:
+    build: .
+    image: esp-build-server
+    command: celery -A celery_worker.celery worker --loglevel=info --concurrency=2
+    volumes:
+      - esphome_jobs_data:/data/esphome_jobs
+    environment:
+      CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: rpc://
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    develop:
+      watch:
+        - path: ./app
+          action: sync+restart
+          target: /app
+
 
 # This top-level key tells Docker to create and manage
 # the named volume 'esphome_jobs_data'.

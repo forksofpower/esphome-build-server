@@ -29,3 +29,7 @@ build/
 # Operating System specific files
 .DS_Store
 Thumbs.db
+
+# Project specific ignores
+test-project
+esphome_jobs
