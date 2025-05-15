@@ -7,7 +7,7 @@ Stateless services and helper functions.
 import re
 import os
 import uuid
-import logging # <-- Import logging
+import logging
 from flask import current_app as app # Keep for routes, but avoid in services
 
 # --- Log Parsing ---
@@ -156,7 +156,6 @@ def get_device_name_from_yaml(yaml_path):
                         if device_name and not device_name.startswith('!'):
                             return device_name
     except Exception as e:
-        # Use standard logging
         logging.warning(f"Could not parse device name from YAML: {e}. Falling back to filename.")
     return None # Return None on failure
 
@@ -166,13 +165,11 @@ def _find_firmware_bin(project_dir, device_name):
     'project_dir' is the *persistent* path, e.g., .../projects/my_device/
     """
     build_dir = os.path.join(project_dir, ".esphome", "build", device_name)
-    # Use standard logging
     logging.info(f"Searching for binary in: {build_dir}")
     if os.path.isdir(build_dir):
         for root, dirs, files in os.walk(build_dir):
             if "firmware.bin" in files:
                 found_path = os.path.join(root, "firmware.bin")
-                # Use standard logging
                 logging.info(f"Found binary at: {found_path}")
                 return found_path
     return None

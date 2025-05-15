@@ -6,13 +6,13 @@ Core job management logic.
 """
 
 import os
-import logging # <-- Import logging
+import logging
 import subprocess
 import datetime
 import shutil
 import queue
 import uuid
-
+from .celery_app import celery
 from .app_config import config
 from .jobs_state import (
     JOBS_DB, JOBS_DB_LOCK, JOB_LOG_BROADCASTER, 
@@ -48,8 +48,6 @@ def _broadcast_log(job_id, payload):
                 except queue.Full:
                     pass 
 
-from .celery_app import celery
-
 @celery.task(name='app.jobs.run_esphome_task')
 def run_esphome_task(job_id, project_dir, yaml_filename, device_name, log_path, job_type, target_device, api_password):
     """
@@ -64,7 +62,6 @@ def run_esphome_task(job_id, project_dir, yaml_filename, device_name, log_path, 
 
     # --- Build the command based on job type ---
     if job_type == "upload" and target_device:
-        # Use standard logging for background threads
         logging.info(f"Job {job_id}: Starting TRUE UPLOAD task for '{device_name}'. Target: {target_device}")
         local_command = [
             "platformio", "run",
@@ -75,9 +72,10 @@ def run_esphome_task(job_id, project_dir, yaml_filename, device_name, log_path, 
         ]
     else:
         job_type = "compile"
-        # Use standard logging for background threads
         logging.info(f"Job {job_id}: Starting COMPILE task for '{device_name}'.")
-        local_command = ["esphome", "compile", yaml_filename]
+        
+        # Use wrapper script that injects ccache configuration
+        local_command = ["esphome-compile-with-ccache.sh", "compile", yaml_filename]
     
     parser = LogParser()
     
@@ -86,7 +84,6 @@ def run_esphome_task(job_id, project_dir, yaml_filename, device_name, log_path, 
     if api_password:
         env['ESPHOME_API_PASSWORD'] = api_password
     
-    # Use standard logging for background threads
     logging.info(f"Job {job_id}: Setting PLATFORMIO_CORE_DIR to {config.PLATFORMIO_CACHE_DIR}")
     
     try:
@@ -154,21 +151,18 @@ def run_esphome_task(job_id, project_dir, yaml_filename, device_name, log_path, 
                         
                         job_details["status"] = "success"
                         job_details["binary_file"] = final_binary_name
-                        # Use standard logging for background threads
                         logging.info(f"Job {job_id}: {job_type.upper()} SUCCESS. Binary at {final_binary_path}")
                         
                         if job_type == "compile":
                             for event in parser.parse_line("[SUCCESS] Build Succeeded"): _broadcast_log(job_id, event)
                     else:
                         log_msg = f"Source binary not found in {project_dir}"
-                        # Use standard logging for background threads
                         logging.error(f"Job {job_id}: Succeeded but {log_msg}")
                         log_file.write(f"Status: FAILED ({log_msg})\n")
                         job_details["status"] = "failed"
                         job_details["error"] = log_msg
                         for event in parser.parse_line(f"[FAILED] Error: {log_msg}"): _broadcast_log(job_id, event)
                 else:
-                    # Use standard logging for background threads
                     logging.error(f"Job {job_id}: {job_type.upper()} FAILED. Check log: {log_path}")
                     log_file.write("Status: FAILED\n")
                     job_details["status"] = "failed"
@@ -178,7 +172,6 @@ def run_esphome_task(job_id, project_dir, yaml_filename, device_name, log_path, 
                         _broadcast_log(job_id, event)
 
     except Exception as e:
-        # Use standard logging for background threads
         logging.error(f"Job {job_id}: Worker thread crashed: {e}")
         try:
             with JOBS_DB_LOCK:

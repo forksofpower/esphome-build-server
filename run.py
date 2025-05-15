@@ -13,14 +13,12 @@ from app import create_app
 from app.app_config import config
 from app.jobs import setup_directories
 
-# Create the Flask app instance
 app = create_app()
 
 if __name__ == '__main__':
     # Wrap all startup logic in an app context.
     # This makes 'app.logger' available to all functions called here.
     with app.app_context():
-        # Setup directories on startup
         setup_directories()
 
         # --- Startup Logging & Checks ---
@@ -30,7 +28,6 @@ if __name__ == '__main__':
         
         app.logger.info(f"Max concurrent jobs: {config.MAX_CONCURRENT_JOBS}")
         
-        # Check for required command-line tools
         esphome_ok = shutil.which("esphome")
         platformio_ok = shutil.which("platformio")
         
@@ -60,6 +57,5 @@ if __name__ == '__main__':
     
     # --- END OF APP CONTEXT BLOCK ---
 
-    # Run the Flask app
     # This call is (and must be) outside the app_context block
     app.run(debug=config.DEBUG, host=config.HOST, port=config.PORT)

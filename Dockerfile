@@ -1,45 +1,9 @@
-# # Use a stable, slim Python base image
-# FROM python:3.11-slim
-
-# # Set the working directory inside the container
-# WORKDIR /app
-
-# # Install system deps
-# RUN apt-get update && apt-get install -y \
-#     git ccache\
-#     && rm -rf /var/lib/apt/lists/*
-
-# # Install dependencies: Flask (for the server) and ESPHome
-# # We use --no-cache-dir to keep the image size smaller
-# RUN pip install --no-cache-dir flask esphome
-
-# # Copy your new server script AND its config file
-# COPY esphome-compile-job-server.py .
-# COPY config.ini .
-
-# # Expose the port the server runs on (from config.ini)
-# EXPOSE 5001
-
-# # Define the single persistent volume.
-# # This one directory now holds everything:
-# #  - /app/esphome_jobs/logs
-# #  - /app/esphome_jobs/files
-# #  - /app/esphome_jobs/binaries
-# #  - /app/esphome_jobs/platformio_cache (thanks to your new config!)
-# VOLUME ["/app/esphome_jobs"]
-
-# # The command to run when the container starts
-# CMD ["python3", "esphome-compile-job-server.py"]
-
-# 1. Base Image: Use an official Python image
+# 1. Base Image
 FROM python:3.11-slim
 
-# Set working directory
-WORKDIR /app
+ENV DEBIAN_FRONTEND=noninteractive
 
-# 2. Install System Dependencies:
-#    - 'git' is required by PlatformIO/ESPHome for some dependencies
-#    - 'build-essential' and 'python3-dev' for compiling Python packages
+# 2. Install System Dependencies
 RUN apt-get update && apt-get install -y \
     git \
     ccache \
@@ -48,51 +12,47 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. Install Python Dependencies
-#    - Copy *only* requirements.txt first to leverage Docker cache
+WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 4. Install ESPHome & PlatformIO (and pre-cache)
-#    This is the "pre-load" step, moved into the build
-RUN pip install --no-cache-dir esphome platformio 
-# && \
-#     # Create dummy files to force pre-caching
-#     mkdir -p /tmp/dummy-project && \
-#     echo 'esphome:
-#       name: dummy32
-#       platform: ESP32
-#       board: esp32dev
-#     ' > /tmp/dummy-project/dummy32.yaml && \
-#     echo 'esphome:
-#       name: dummy8266
-#       platform: ESP8266
-#       board: nodemcuv2
-#     ' > /tmp/dummy-project/dummy8266.yaml && \
-#     # Run the pre-compiles. This will download toolchains.
-#     # We point the cache to a *build-time* location.
-#     esphome compile /tmp/dummy-project/dummy32.yaml --build-path /tmp/dummy-project/build && \
-#     esphome compile /tmp/dummy-project/dummy8266.yaml --build-path /tmp/dummy-project/build && \
-#     # Clean up
-#     rm -rf /tmp/dummy-project
+# This is the path for the PlatformIO cache
+ENV TRUSTED_PIO_CACHE_DIR=/opt/esphome-cache/platformio
+# This ENV must be set *before* any RUN command that uses it
+ENV PLATFORMIO_CORE_DIR=${TRUSTED_PIO_CACHE_DIR}
 
-# 5. Copy the Application Code
-#    This includes run.py, config.ini, and the 'app/' directory
+# Configure ccache for compiled object caching
+ENV CCACHE_DIR=/opt/esphome-cache/ccache
+RUN mkdir -p ${CCACHE_DIR} && \
+    ccache --set-config=cache_dir=${CCACHE_DIR} && \
+    ccache --set-config=max_size=2G && \
+    ccache --set-config=compression=true && \
+    ccache --set-config=compression_level=6
+
+# Copy ccache wrapper scripts
+COPY docker/inject_ccache.py /usr/local/bin/inject_ccache.py
+COPY docker/inject_ccache_wrapper.py /opt/ccache_wrapper.py
+COPY docker/esphome-compile-with-ccache.sh /usr/local/bin/esphome-compile-with-ccache.sh
+RUN chmod +x /usr/local/bin/inject_ccache.py && \
+    chmod +x /usr/local/bin/esphome-compile-with-ccache.sh
+
+# Copy the application code
 COPY . .
 
-# 6. Define Volumes
-#    This is where all your persistent data will live on the *host*
+# Define Volumes for user data
 VOLUME /data/esphome_jobs/projects
 VOLUME /data/esphome_jobs/binaries
 VOLUME /data/esphome_jobs/logs
-VOLUME /data/esphome_jobs/platformio_cache
 
-# 7. Set environment variables to point to the volumes
-#    This tells our app and PlatformIO to use the persistent data volumes
-ENV PLATFORMIO_CORE_DIR=/data/esphome_jobs/platformio_cache
-# We'll also point the app config to this path
+# Set final environment variables for the running container
 ENV ESPHOME_SERVER_BASE_DIR=/data
+# This ensures running jobs also use the trusted cache
+ENV PLATFORMIO_CORE_DIR=${TRUSTED_PIO_CACHE_DIR}
+ENV CCACHE_DIR=/opt/esphome-cache/ccache
 
-# 8. Expose the port and set the run command
+# Update config.ini to use /data as base_dir
+RUN sed -i 's|^base_dir = esphome_jobs|base_dir = /data/esphome_jobs|' config.ini
+
+# Expose port and run
 EXPOSE 5001
 CMD ["python3", "run.py"]
-

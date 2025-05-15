@@ -23,7 +23,6 @@ from .jobs_state import (
 from .services import get_device_name_from_yaml, LogParser
 from .jobs import run_esphome_task
 
-# Create a Blueprint
 main_bp = Blueprint('main', __name__)
 
 @main_bp.route('/compile', methods=['POST'])
@@ -586,9 +585,6 @@ def download_binary(job_id):
 @main_bp.route('/', methods=['GET'])
 def index():
     """Simple index page with instructions."""
-    # --- THIS IS THE FIX ---
-    # 1. This is no longer an f-string. It's a regular string.
-    # 2. Variables are passed into render_template_string as Jinja2 context.
     template = """
         <html>
             <head><title>ESPHome Compile Server</title></head>

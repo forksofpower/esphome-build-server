@@ -5,3 +5,4 @@ idf-component-manager
 celery
 kombu
 redis
+boto3

@@ -27,7 +27,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Flask web server
+  # Web server
   esphome-server:
     build: .
     image: esp-build-server
@@ -74,8 +74,5 @@ services:
           action: sync+restart
           target: /app
 
-
-# This top-level key tells Docker to create and manage
-# the named volume 'esphome_jobs_data'.
 volumes:
   esphome_jobs_data:
