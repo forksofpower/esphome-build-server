@@ -587,6 +587,8 @@ dependencies = [
     { name = "idf-component-manager" },
     { name = "kombu" },
     { name = "platformio" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
     { name = "redis" },
     { name = "uvicorn" },
 ]
@@ -601,6 +603,8 @@ requires-dist = [
     { name = "idf-component-manager", specifier = ">=2.4.5" },
     { name = "kombu", specifier = ">=5.6.2" },
     { name = "platformio", specifier = ">=6.1.18" },
+    { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "pydantic-settings", specifier = ">=2.12.0" },
     { name = "redis", specifier = ">=7.1.0" },
     { name = "uvicorn", specifier = ">=0.34.3" },
 ]

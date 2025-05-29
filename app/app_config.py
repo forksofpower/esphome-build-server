@@ -6,6 +6,22 @@ Reads 'config.ini' and provides a global 'config' object.
 import os
 import configparser
 
+from pydantic_settings import BaseSettings
+
+# TODO: Merge pydantic settings 
+# New settings using pydantic
+class Settings(BaseSettings):
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
+
+    class Config:
+        case_sensitive = True
+        env_file = ".env"
+
+settings = Settings()
+
+
+# Old settings
 class AppConfig:
     """Loads and holds all application configuration from config.ini."""
     
@@ -20,13 +36,17 @@ class AppConfig:
             print(f"INFO: Config file not found. A default one will be assumed by the application.")
 
         parser.read(config_file_path)
+
+        self.APP_VERSION = parser.get('server', 'app_version', fallback='v17.0 (project-caching)')
         
+        self.CELERY_BROKER_URL = parser.get('celery', 'broker_url', fallback="redis://localhost:6379/0")
+        self.CELERY_RESULT_BACKEND = parser.get('celery', 'result_backend', fallback="redis://localhost:6379/0")
+
         self.HOST = parser.get('server', 'host', fallback='0.0.0.0')
         self.PORT = parser.getint('server', 'port', fallback=5001)
 
         self.DEBUG = parser.getboolean('server', 'debug', fallback=False)
         self.LOG_LEVEL = parser.get('server', 'log_level', fallback='INFO').upper()
-        self.APP_VERSION = parser.get('server', 'app_version', fallback='v17.0 (project-caching)')
 
         self.MAX_CONCURRENT_JOBS = parser.getint('jobs', 'max_concurrent_jobs', fallback=2)
         secrets_str = parser.get('jobs', 'secret_filenames', fallback='secrets.yaml, secrets.yml')
